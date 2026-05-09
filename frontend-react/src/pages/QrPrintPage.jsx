@@ -30,6 +30,7 @@ export function QrPrintPage() {
   const [assigneeQuery, setAssigneeQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
 
   const selectedAssets = useMemo(() => {
     const selectedIds = selected;
@@ -220,14 +221,72 @@ export function QrPrintPage() {
 
       <div className="space-y-6">
         <Card title="Print QR labels" subtitle="Check the assets you want to print.">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] xl:hidden">
+            <InputField
+              label="Search"
+              labelClassName="block text-center"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search assets"
+              className="min-h-10 py-2 text-center text-xs sm:text-sm"
+            />
+            <div className="flex items-end justify-center">
+              <Button variant="secondary" className="w-full" onClick={() => setShowFilters((value) => !value)}>
+                {showFilters ? "Hide filters" : "Filters"}
+              </Button>
+            </div>
+          </div>
+
+          {showFilters && (
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:hidden">
+              <InputField
+                label="Assignee"
+                labelClassName="block text-center"
+                value={assigneeQuery}
+                onChange={(event) => setAssigneeQuery(event.target.value)}
+                placeholder="Search by user name"
+                className="min-h-10 py-2 text-center text-xs sm:text-sm"
+              />
+              <SelectField label="Status" labelClassName="block text-center" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
+                <option value="">All statuses</option>
+                {assetStatuses.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </SelectField>
+              <SelectField label="Type" labelClassName="block text-center" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
+                <option value="">All types</option>
+                {assetTypes.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </SelectField>
+              <SelectField label="Location" labelClassName="block text-center" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
+                <option value="">All locations</option>
+                {locationOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </SelectField>
+              <SelectField label="Department" labelClassName="block text-center" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
+                <option value="">All departments</option>
+                {departmentOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </SelectField>
+              <SelectField label="QR" labelClassName="block text-center" value={qrFilter} onChange={(event) => setQrFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
+                <option value="with">With QR</option>
+                <option value="without">Without QR</option>
+                <option value="all">All</option>
+              </SelectField>
+            </div>
+          )}
+
+          <div className="hidden gap-3 xl:grid xl:grid-cols-7">
             <InputField
               label="Search"
               labelClassName="block text-center"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Asset ID, name, serial, code"
-              className="text-center"
+              className="min-h-10 py-2 text-center text-xs sm:text-sm"
             />
             <InputField
               label="Assignee"
@@ -235,44 +294,44 @@ export function QrPrintPage() {
               value={assigneeQuery}
               onChange={(event) => setAssigneeQuery(event.target.value)}
               placeholder="Search by user name"
-              className="text-center"
+              className="min-h-10 py-2 text-center text-xs sm:text-sm"
             />
-            <SelectField label="Status" labelClassName="block text-center" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="text-center">
+            <SelectField label="Status" labelClassName="block text-center" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
               <option value="">All statuses</option>
               {assetStatuses.map((item) => (
                 <option key={item} value={item}>{item}</option>
               ))}
             </SelectField>
-            <SelectField label="Type" labelClassName="block text-center" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="text-center">
+            <SelectField label="Type" labelClassName="block text-center" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
               <option value="">All types</option>
               {assetTypes.map((item) => (
                 <option key={item} value={item}>{item}</option>
               ))}
             </SelectField>
-            <SelectField label="Location" labelClassName="block text-center" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} className="text-center">
+            <SelectField label="Location" labelClassName="block text-center" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
               <option value="">All locations</option>
               {locationOptions.map((item) => (
                 <option key={item} value={item}>{item}</option>
               ))}
             </SelectField>
-            <SelectField label="Department" labelClassName="block text-center" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="text-center">
+            <SelectField label="Department" labelClassName="block text-center" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
               <option value="">All departments</option>
               {departmentOptions.map((item) => (
                 <option key={item} value={item}>{item}</option>
               ))}
             </SelectField>
-            <SelectField label="QR" labelClassName="block text-center" value={qrFilter} onChange={(event) => setQrFilter(event.target.value)} className="text-center">
+            <SelectField label="QR" labelClassName="block text-center" value={qrFilter} onChange={(event) => setQrFilter(event.target.value)} className="min-h-10 py-2 text-center text-xs sm:text-sm">
               <option value="with">With QR</option>
               <option value="without">Without QR</option>
               <option value="all">All</option>
             </SelectField>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-slate-600">
               {loading ? "Loading assets..." : `${filteredAssets.length} assets loaded`}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button variant="secondary" onClick={handleSelectAll} disabled={!selectableAssets.length}>
                 {allSelected ? "Clear all" : "Select all"}
               </Button>
@@ -303,8 +362,8 @@ export function QrPrintPage() {
                         onChange={() => toggleAsset(asset)}
                         aria-label={`Select ${asset.formatted_asset_id || asset.asset_code || asset.asset_id}`}
                       />
-                      <div className={`w-full rounded-2xl border-2 border-black bg-white p-4 ${!hasQr ? "opacity-60" : ""}`}>
-                        <div className="flex items-center justify-between gap-6">
+                        <div className={`w-full rounded-2xl border-2 border-black bg-white p-4 ${!hasQr ? "opacity-60" : ""}`}>
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="space-y-2">
                             <div className="text-base font-extrabold text-slate-900">
                               Asset ID:{asset.formatted_asset_id || asset.asset_code || "-"}
@@ -316,13 +375,13 @@ export function QrPrintPage() {
                           </div>
                           {hasQr ? (
                             <img
-                              className="h-28 w-28 object-contain"
+                              className="h-24 w-24 object-contain sm:h-28 sm:w-28"
                               src={`${API_BASE_URL}${asset.qr_code_image_url}`}
                               alt="Asset QR code"
                               loading="lazy"
                             />
                           ) : (
-                            <div className="h-28 w-28 rounded-2xl border border-dashed border-slate-200 bg-slate-50" />
+                            <div className="h-24 w-24 rounded-2xl border border-dashed border-slate-200 bg-slate-50 sm:h-28 sm:w-28" />
                           )}
                         </div>
                       </div>

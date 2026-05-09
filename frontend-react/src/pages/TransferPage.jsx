@@ -222,7 +222,7 @@ export function TransferPage() {
 
     try {
       const result = await api.post("/transactions/transfer", {
-        asset_id: Number(form.asset_id),
+        asset_id: form.asset_id,
         to_assignee: Number(form.to_assignee),
         remarks: form.remarks || null,
       });
@@ -234,14 +234,14 @@ export function TransferPage() {
   };
 
   return (
-    <Layout title="Transfer asset" subtitle="Move an assigned asset to another user.">
+    <Layout title="Transfer asset">
       <Card>
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
           <GroupedSearchSelect
             label="Asset"
             query={assetQuery}
             onQueryChange={setAssetQuery}
-            queryPlaceholder="Search by asset id or asset code"
+            queryPlaceholder="Search by Asset ID"
             value={form.asset_id}
             onValueChange={(value) => setForm({ ...form, asset_id: value })}
             options={filteredAssets}

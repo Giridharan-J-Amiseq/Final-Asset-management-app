@@ -51,7 +51,7 @@ class ActivityRepository:
         with session_scope() as session:
             row = ActivityLog(
                 entity_type=str(entity_type)[:30],
-                entity_id=int(entity_id),
+                entity_id=str(entity_id)[:80],
                 action=str(action)[:80],
                 details=payload,
                 performed_by=int(performed_by) if performed_by is not None else None,
@@ -61,7 +61,7 @@ class ActivityRepository:
             session.flush()
             return int(row.log_id)
 
-    def list_logs(self, *, entity_type: str, entity_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    def list_logs(self, *, entity_type: str, entity_id: str, limit: int = 100) -> list[dict[str, Any]]:
         """Return logs for a single entity, newest first."""
 
         limit_value = max(1, min(int(limit or 100), 500))
@@ -70,7 +70,7 @@ class ActivityRepository:
             rows = session.execute(
                 select(ActivityLog, User.user_name)
                 .outerjoin(User, User.user_id == ActivityLog.performed_by)
-                .where(ActivityLog.entity_type == entity_type, ActivityLog.entity_id == int(entity_id))
+                .where(ActivityLog.entity_type == entity_type, ActivityLog.entity_id == str(entity_id))
                 .order_by(ActivityLog.created_on.desc(), ActivityLog.log_id.desc())
                 .limit(limit_value)
             ).all()

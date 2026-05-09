@@ -20,7 +20,6 @@ from constants import (
     ASSET_STATUSES,
     ASSET_TYPES,
     CONDITION_STATUSES,
-    STATUS_ASSIGNED,
 )
 from repositories.asset_repository import AssetRepository
 from repositories.activity_repository import ActivityRepository
@@ -52,13 +51,19 @@ class AssetService:
             "categories": list(ASSET_CATEGORIES),
         }
 
-    def build_asset_code(self, location: str | None, asset_type: str, serial_number: str, asset_id: int | None = None) -> str:
-        """Create the human-readable asset code used on cards and QR pages."""
+    def build_asset_code(
+        self,
+        location: str | None,
+        asset_type: str,
+        serial_number: str,
+        asset_code_seed: int | None = None,
+    ) -> str:
+        """Create the human-readable asset id used on cards and QR pages."""
 
         location_code = (location or "UNK")[:3].upper()
         asset_type_code = (asset_type or "UNK")[:3].upper()
         serial_suffix = (serial_number or "00000")[-5:].upper()
-        suffix_source = random.Random(asset_id if asset_id is not None else 0)
+        suffix_source = random.Random(asset_code_seed if asset_code_seed is not None else 0)
         random_suffix = "".join(suffix_source.choices(string.ascii_uppercase + string.digits, k=2))
         return f"{ASSET_CODE_PREFIX}-{location_code}-{asset_type_code}-{serial_suffix}-{random_suffix}"
 
@@ -66,30 +71,15 @@ class AssetService:
         """Normalize asset output with internal and business-facing asset identifiers."""
 
         asset_copy = dict(asset)
-        if not asset_copy.get("asset_code"):
-            asset_copy["asset_code"] = self.build_asset_code(
-                asset_copy.get("location"),
-                asset_copy.get("asset_type"),
-                asset_copy.get("serial_number"),
-                asset_copy.get("asset_id"),
-            )
-        asset_copy["formatted_asset_id"] = asset_copy["asset_code"]
+        asset_copy["formatted_asset_id"] = asset_copy.get("asset_id")
         try:
             asset_copy["qr_code_value"] = int(asset_copy["qr_code_value"]) if asset_copy.get("qr_code_value") is not None else None
         except (TypeError, ValueError):
-            asset_copy["qr_code_value"] = asset_copy.get("asset_id")
+            asset_copy["qr_code_value"] = asset_copy.get("asset_code")
         return asset_copy
 
     def build_qr_payload(self, asset: dict[str, Any], transactions: list[dict[str, Any]] | None = None) -> str:
         """Build the readable text that a scanner displays after reading the QR code."""
-
-        latest_transaction = transactions[0] if transactions else None
-        if asset.get("asset_status") == STATUS_ASSIGNED:
-            assigned_to = latest_transaction.get("to_assignee_name") if latest_transaction else None
-            assigned_on = latest_transaction.get("action_date") if latest_transaction else None
-        else:
-            assigned_to = None
-            assigned_on = None
         generated_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         def safe(value: Any) -> str:
@@ -104,7 +94,6 @@ class AssetService:
                 f"Asset ID: {safe(asset.get('formatted_asset_id') or asset.get('asset_code'))}",
                 f"Asset Name: {safe(asset.get('asset_name'))}",
                 f"Location: {safe(asset.get('location'))}",
-                f"Assigned To: {assigned_to or 'Not assigned'}",
                 f"Generated On: {generated_on}",
             ]
         )
@@ -127,25 +116,25 @@ class AssetService:
             return
 
         for row in self.repository.find_assets_missing_codes():
-            asset_code = self.build_asset_code(row["location"], row["asset_type"], row["serial_number"], row["asset_id"])
+            asset_code = self.repository.next_asset_code()
             self.repository.update_asset_code(row["asset_id"], asset_code)
         self._asset_code_backfill_ready = True
 
-    def resolve_asset_or_404(self, asset_identifier: int | str) -> dict[str, Any]:
+    def resolve_asset_or_404(self, asset_identifier: str) -> dict[str, Any]:
         """Return one asset by numeric database id or formatted asset id."""
 
         self.ensure_asset_code_values()
         asset = None
         identifier_text = str(asset_identifier).strip()
         if identifier_text.isdigit():
-            asset = self.repository.find_by_id(int(identifier_text))
+            asset = self.repository.find_by_asset_code(int(identifier_text))
         if not asset:
-            asset = self.repository.find_by_asset_code(identifier_text)
+            asset = self.repository.find_by_id(identifier_text)
         if not asset:
             raise HTTPException(status_code=404, detail="Asset not found")
         return self.decorate_asset(asset)
 
-    def get_asset_or_404(self, asset_id: int | str) -> dict[str, Any]:
+    def get_asset_or_404(self, asset_id: str) -> dict[str, Any]:
         """Return one asset or raise a 404 response."""
 
         return self.resolve_asset_or_404(asset_id)
@@ -182,7 +171,7 @@ class AssetService:
         )
         return {"page": page, "page_size": page_size, "total": total, "items": [self.decorate_asset(item) for item in items]}
 
-    def get_asset_detail(self, asset_id: int | str) -> dict[str, Any]:
+    def get_asset_detail(self, asset_id: str) -> dict[str, Any]:
         """Return asset master data with related transactions and maintenance records."""
 
         asset = self.get_asset_or_404(asset_id)
@@ -213,17 +202,16 @@ class AssetService:
         if self.repository.find_by_serial(payload.serial_number):
             raise HTTPException(status_code=400, detail="Serial number already exists")
 
-        temporary_code = self.build_asset_code(payload.location, payload.asset_type, payload.serial_number, None)
-        asset_id = self.repository.create_asset(payload, temporary_code, current_user["user_id"])
-        asset_code = self.build_asset_code(payload.location, payload.asset_type, payload.serial_number, asset_id)
-        self.repository.update_asset_code(asset_id, asset_code)
-        qr_value = asset_id
+        asset_code = self.repository.next_asset_code()
+        asset_id = self.build_asset_code(payload.location, payload.asset_type, payload.serial_number, asset_code)
+        self.repository.create_asset(payload, asset_id, asset_code, current_user["user_id"])
+        qr_value = asset_code
         qr_payload = self.build_qr_payload(
             {
                 "asset_id": asset_id,
                 "asset_name": payload.asset_name,
-                "asset_code": asset_code,
-                "formatted_asset_id": asset_code,
+            "asset_code": asset_code,
+            "formatted_asset_id": asset_id,
                 "serial_number": payload.serial_number,
                 "asset_type": payload.asset_type,
                 "category": payload.category,
@@ -242,18 +230,18 @@ class AssetService:
             }
         )
         image_url = self.qr_generator.generate_for_asset(asset_id, qr_payload)
-        self.repository.update_qr(asset_id, qr_value, image_url)
+        self.repository.update_qr(asset_id, int(qr_value), image_url)
         return {
             "message": "Asset created successfully",
             "asset_id": asset_id,
             "asset_code": asset_code,
-            "formatted_asset_id": asset_code,
+            "formatted_asset_id": asset_id,
             "qr_code_value": qr_value,
             "qr_code_image_url": image_url,
             "qr_payload": qr_payload,
         }
 
-    def update_asset(self, asset_id: int | str, payload: AssetUpdate, current_user: dict[str, Any]) -> dict[str, Any]:
+    def update_asset(self, asset_id: str, payload: AssetUpdate, current_user: dict[str, Any]) -> dict[str, Any]:
         """Apply partial asset updates after checking asset existence and serial uniqueness."""
 
         asset = self.get_asset_or_404(asset_id)
@@ -282,7 +270,7 @@ class AssetService:
 
         return {"message": "Asset updated successfully", "asset_before": asset}
 
-    def retire_asset(self, asset_id: int | str, current_user: dict[str, Any]) -> dict[str, str]:
+    def retire_asset(self, asset_id: str, current_user: dict[str, Any]) -> dict[str, str]:
         """Retire an asset after confirming it exists."""
 
         asset = self.get_asset_or_404(asset_id)
@@ -296,7 +284,7 @@ class AssetService:
         )
         return {"message": "Asset retired successfully"}
 
-    def mark_available(self, asset_id: int | str, current_user: dict[str, Any]) -> dict[str, Any]:
+    def mark_available(self, asset_id: str, current_user: dict[str, Any]) -> dict[str, Any]:
         """Mark an asset as Available (return to inventory)."""
 
         asset = self.get_asset_or_404(asset_id)
@@ -317,13 +305,13 @@ class AssetService:
 
         return {"message": "Asset marked available", "asset_id": asset["asset_id"], "asset_status": "Available"}
 
-    def generate_qr(self, asset_id: int | str) -> dict[str, Any]:
+    def generate_qr(self, asset_id: str) -> dict[str, Any]:
         """Generate or refresh the QR code image for an asset."""
 
         asset = self.get_asset_or_404(asset_id)
         internal_asset_id = asset["asset_id"]
         transactions = self.repository.list_transactions_for_asset(internal_asset_id)
-        qr_value = asset.get("qr_code_value") or internal_asset_id
+        qr_value = asset.get("qr_code_value") or asset.get("asset_code")
         qr_payload = self.build_qr_payload(asset, transactions)
         image_url = self.qr_generator.generate_for_asset(internal_asset_id, qr_payload)
         self.repository.update_qr(internal_asset_id, int(qr_value), image_url)

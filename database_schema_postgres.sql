@@ -4,6 +4,8 @@ CREATE DATABASE worksphere;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+CREATE SEQUENCE IF NOT EXISTS asset_code_seq START 1;
+
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
@@ -68,12 +70,12 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS asset_master (
-    asset_id SERIAL PRIMARY KEY,
+    asset_id VARCHAR(64) PRIMARY KEY,
     asset_name VARCHAR(150) NOT NULL,
     asset_type asset_type_enum NOT NULL,
     category asset_category_enum NOT NULL,
     serial_number VARCHAR(100) NOT NULL UNIQUE,
-    asset_code VARCHAR(255),
+    asset_code INTEGER UNIQUE DEFAULT nextval('asset_code_seq'),
     qr_code_value INT,
     qr_code_image_url TEXT,
     model VARCHAR(100),
@@ -98,7 +100,7 @@ CREATE TABLE IF NOT EXISTS asset_master (
 
 CREATE TABLE IF NOT EXISTS asset_transaction (
     transaction_id SERIAL PRIMARY KEY,
-    asset_id INT NOT NULL REFERENCES asset_master(asset_id),
+    asset_id VARCHAR(64) NOT NULL REFERENCES asset_master(asset_id),
     asset_type asset_type_enum NOT NULL,
     from_employee INT NULL REFERENCES users(user_id),
     to_assignee INT NOT NULL REFERENCES users(user_id),
@@ -112,7 +114,7 @@ CREATE TABLE IF NOT EXISTS asset_transaction (
 
 CREATE TABLE IF NOT EXISTS maintenance (
     maintenance_id SERIAL PRIMARY KEY,
-    asset_id INT NOT NULL REFERENCES asset_master(asset_id),
+    asset_id VARCHAR(64) NOT NULL REFERENCES asset_master(asset_id),
     issue_description TEXT NOT NULL,
     issue_type issue_type_enum NOT NULL,
     warranty_applicable BOOLEAN NOT NULL DEFAULT FALSE,
@@ -131,7 +133,7 @@ CREATE TABLE IF NOT EXISTS asset_category (
 
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id SERIAL PRIMARY KEY,
-    asset_id INT NOT NULL REFERENCES asset_master(asset_id),
+    asset_id VARCHAR(64) NOT NULL REFERENCES asset_master(asset_id),
     alert_type VARCHAR(100) NOT NULL,
     message TEXT NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
@@ -141,7 +143,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE TABLE IF NOT EXISTS activity_log (
     log_id SERIAL PRIMARY KEY,
     entity_type VARCHAR(30) NOT NULL,
-    entity_id INT NOT NULL,
+    entity_id VARCHAR(80) NOT NULL,
     action VARCHAR(80) NOT NULL,
     details TEXT,
     performed_by INT NULL REFERENCES users(user_id),

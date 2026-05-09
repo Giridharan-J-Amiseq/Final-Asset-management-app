@@ -24,8 +24,18 @@ import { assetConditions } from "../app/routeConfig";
 export function AssetDetailPage() {
   const { assetId } = useParams();
   const [data, setData] = useState(null);
-  const [form, setForm] = useState({ asset_name: "", department: "", location: "", condition_status: "" });
-  const [dropdowns, setDropdowns] = useState({ departments: [], locations: [] });
+  const [form, setForm] = useState({
+    asset_name: "",
+    category: "",
+    brand: "",
+    department: "",
+    location: "",
+    condition_status: "",
+    specifications: "",
+    warranty_start_date: "",
+    warranty_expiry: "",
+  });
+  const [dropdowns, setDropdowns] = useState({ departments: [], locations: [], categories: [] });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -45,6 +55,7 @@ export function AssetDetailPage() {
           setDropdowns({
             departments: dropdownResponse?.departments || [],
             locations: dropdownResponse?.locations || [],
+            categories: dropdownResponse?.categories || [],
           });
         }
         const response = await api.get(`/assets/${assetId}`);
@@ -52,9 +63,14 @@ export function AssetDetailPage() {
         setData(response);
         setForm({
           asset_name: response.asset.asset_name || "",
+          category: response.asset.category || "",
+          brand: response.asset.brand || "",
           department: response.asset.department || "",
           location: response.asset.location || "",
           condition_status: response.asset.condition_status || "New",
+          specifications: response.asset.specifications || "",
+          warranty_start_date: response.asset.warranty_start_date || "",
+          warranty_expiry: response.asset.warranty_expiry ?? "",
         });
       } catch (requestError) {
         if (mounted) setError(requestError.message);
@@ -89,7 +105,12 @@ export function AssetDetailPage() {
     event.preventDefault();
     setMessage("");
     try {
-      await api.put(`/assets/${assetId}`, form);
+      const payload = {
+        ...form,
+        warranty_start_date: form.warranty_start_date || null,
+        warranty_expiry: form.warranty_expiry ? Number(form.warranty_expiry) : null,
+      };
+      await api.put(`/assets/${assetId}`, payload);
       setMessage("Asset updated successfully.");
       const updated = await api.get(`/assets/${assetId}`);
       setData(updated);
@@ -165,12 +186,19 @@ export function AssetDetailPage() {
         </div>
       )}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="text-lg font-semibold text-slate-900">Edit asset</div>
             <p className="mt-2 text-sm text-slate-600">Update the core asset record.</p>
             <form className="mt-5 space-y-4" onSubmit={(event) => { saveAsset(event); setShowEditModal(false); }}>
               <InputField label="Asset name" value={form.asset_name} onChange={(event) => setForm({ ...form, asset_name: event.target.value })} />
+              <SelectField label="Category" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>
+                <option value="">Select category</option>
+                {dropdowns.categories.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </SelectField>
+              <InputField label="Brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} />
               <SelectField label="Department" value={form.department} onChange={(event) => setForm({ ...form, department: event.target.value })}>
                 <option value="">Select department</option>
                 {dropdowns.departments.map((item) => (
@@ -186,6 +214,9 @@ export function AssetDetailPage() {
               <SelectField label="Condition" value={form.condition_status} onChange={(event) => setForm({ ...form, condition_status: event.target.value })}>
                 {assetConditions.map((item) => <option key={item} value={item}>{item}</option>)}
               </SelectField>
+              <TextareaField label="Specifications" value={form.specifications} onChange={(event) => setForm({ ...form, specifications: event.target.value })} />
+              <InputField label="Warranty start" type="date" value={form.warranty_start_date} onChange={(event) => setForm({ ...form, warranty_start_date: event.target.value })} />
+              <InputField label="Warranty expiry (years)" type="number" min="0" max="50" value={form.warranty_expiry} onChange={(event) => setForm({ ...form, warranty_expiry: event.target.value })} />
               <div className="flex flex-wrap justify-end gap-2 pt-2">
                 <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
                 <Button type="submit">Save changes</Button>
@@ -292,7 +323,9 @@ export function AssetDetailPage() {
 
               <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:rounded-3xl sm:p-5">
                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Specifications</div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{asset.specifications || "No specifications provided."}</p>
+                <p className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                  {asset.specifications || "No specifications provided."}
+                </p>
               </div>
 
               <div className="mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">

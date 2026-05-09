@@ -15,7 +15,7 @@ import { navigationItems } from "../app/routeConfig";
 import { clearSession, getStoredUser } from "../services/auth";
 import { Button } from "./Button";
 
-export function Layout({ title, subtitle, children, centerTitle = false, titleClassName = "", subtitleClassName = "" }) {
+export function Layout({ title, subtitle, children, centerTitle = true, titleClassName = "", subtitleClassName = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const user = getStoredUser();
   const navigate = useNavigate();
@@ -58,12 +58,17 @@ export function Layout({ title, subtitle, children, centerTitle = false, titleCl
 
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-ink-700/60 bg-gradient-to-r from-ink-900 via-ink-800 to-ink-700 text-slate-100">
-            <div className={`flex flex-col gap-4 px-3 py-3 sm:px-4 md:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8 xl:py-4 ${centerTitle ? "relative" : ""}`}>
+            <div className={`flex flex-col gap-4 px-3 py-3 sm:px-4 md:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8 xl:py-4 ${centerTitle ? "xl:relative" : ""}`}>
               <div className={`flex min-w-0 items-start gap-3 sm:items-center ${centerTitle ? "flex-1" : ""}`}>
-                <Button variant="ghost" className="h-10 w-10 shrink-0 p-0 text-slate-200 hover:bg-white/10 hover:text-white xl:hidden" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+                <Button
+                  variant="ghost"
+                  className="relative z-10 h-10 w-10 shrink-0 bg-white/10 p-0 text-white ring-1 ring-white/15 hover:bg-white/20 xl:hidden xl:bg-transparent xl:ring-0"
+                  onClick={() => setMenuOpen(true)}
+                  aria-label="Open menu"
+                >
                   <Menu size={18} />
                 </Button>
-                <div className={`min-w-0 ${centerTitle ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center" : ""}`}>
+                <div className={`min-w-0 ${centerTitle ? "w-full text-center xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2" : ""}`}>
                   <div className={`flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-100/85 sm:text-xs sm:tracking-[0.24em] ${centerTitle ? "justify-center" : ""}`}>
                     <Shield size={14} />
                     <span className="bg-gradient-to-r from-brand-green to-brand-teal bg-clip-text text-transparent">AMISEQ</span>

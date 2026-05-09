@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy import String, and_, case, cast, func, or_, select, text
 from sqlalchemy.orm import aliased
 
-from constants import ASSET_CODE_PREFIX, STATUS_ASSIGNED, STATUS_AVAILABLE, STATUS_RETIRED
+from constants import STATUS_ASSIGNED, STATUS_AVAILABLE, STATUS_RETIRED
 from db.models import AssetMaster, AssetTransaction, Maintenance, User
 from db.serialization import model_to_dict
 from db.session import session_scope
@@ -25,34 +25,24 @@ class AssetRepository:
         return
 
     def find_assets_missing_codes(self) -> list[dict[str, Any]]:
-        """Return assets that need generated asset codes."""
+        """Return assets that need numeric asset codes."""
 
         with session_scope() as session:
-            rows = (
-                session.execute(
-                    select(AssetMaster)
-                    .where(
-                        or_(
-                            AssetMaster.asset_code.is_(None),
-                            AssetMaster.asset_code == "",
-                            AssetMaster.asset_code.like(f"{ASSET_CODE_PREFIX}-%"),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            return [
-                {
-                    "asset_id": asset.asset_id,
-                    "location": asset.location,
-                    "asset_type": asset.asset_type,
-                    "serial_number": asset.serial_number,
-                }
-                for asset in rows
-            ]
+            rows = session.execute(select(AssetMaster.asset_id, AssetMaster.asset_code)).all()
+            payload: list[dict[str, Any]] = []
+            for asset_id, asset_code in rows:
+                if asset_code is None:
+                    payload.append({"asset_id": str(asset_id)})
+            return payload
 
-    def update_asset_code(self, asset_id: int, asset_code: str) -> None:
+    def next_asset_code(self) -> int:
+        """Return the next numeric asset code from the database sequence."""
+
+        with session_scope() as session:
+            value = session.execute(text("SELECT nextval('asset_code_seq')")).scalar_one()
+            return int(value)
+
+    def update_asset_code(self, asset_id: str, asset_code: int) -> None:
         """Persist a generated asset code for a single asset."""
 
         with session_scope() as session:
@@ -60,24 +50,33 @@ class AssetRepository:
             if asset:
                 asset.asset_code = asset_code
 
-    def find_by_id(self, asset_id: int) -> dict[str, Any] | None:
+    def find_by_id(self, asset_id: str) -> dict[str, Any] | None:
         """Return one asset by primary key."""
 
+        asset_id_value = str(asset_id).strip() if asset_id is not None else ""
+        if not asset_id_value:
+            return None
+
         with session_scope() as session:
-            asset = session.get(AssetMaster, asset_id)
+            asset = session.get(AssetMaster, asset_id_value)
             return model_to_dict(asset) if asset else None
 
-    def find_by_asset_code(self, asset_code: str) -> dict[str, Any] | None:
-        """Return one asset by its business-facing formatted asset id."""
+    def find_by_asset_code(self, asset_code: int) -> dict[str, Any] | None:
+        """Return one asset by its numeric asset code."""
+
+        try:
+            asset_code_value = int(asset_code)
+        except (TypeError, ValueError):
+            return None
 
         with session_scope() as session:
             asset = (
-                session.execute(select(AssetMaster).where(AssetMaster.asset_code == asset_code).limit(1))
+                session.execute(select(AssetMaster).where(AssetMaster.asset_code == asset_code_value).limit(1))
                 .scalar_one_or_none()
             )
             return model_to_dict(asset) if asset else None
 
-    def find_by_serial(self, serial_number: str, exclude_asset_id: int | None = None) -> dict[str, Any] | None:
+    def find_by_serial(self, serial_number: str, exclude_asset_id: str | None = None) -> dict[str, Any] | None:
         """Return an asset with the same serial number, optionally excluding one asset."""
 
         with session_scope() as session:
@@ -200,8 +199,8 @@ class AssetRepository:
                     AssetMaster.asset_name.ilike(search_value),
                     AssetMaster.serial_number.ilike(search_value),
                     AssetMaster.brand.ilike(search_value),
-                    AssetMaster.asset_code.ilike(search_value),
-                    cast(AssetMaster.asset_id, String).ilike(search_value),
+                    cast(AssetMaster.asset_code, String).ilike(search_value),
+                    AssetMaster.asset_id.ilike(search_value),
                     current_assignee_name.ilike(search_value),
                 )
             )
@@ -215,11 +214,12 @@ class AssetRepository:
             filters.append(AssetMaster.department == department)
         return filters
 
-    def create_asset(self, payload, asset_code: str, current_user_id: int) -> int:
+    def create_asset(self, payload, asset_id: str, asset_code: int, current_user_id: int) -> str:
         """Insert a new asset row and return the generated asset id."""
 
         with session_scope() as session:
             asset = AssetMaster(
+                asset_id=asset_id,
                 asset_name=payload.asset_name,
                 asset_type=payload.asset_type,
                 category=payload.category,
@@ -245,9 +245,9 @@ class AssetRepository:
             )
             session.add(asset)
             session.flush()
-            return int(asset.asset_id)
+            return str(asset.asset_id)
 
-    def update_asset_fields(self, asset_id: int, data: dict[str, Any], modified_by: int) -> None:
+    def update_asset_fields(self, asset_id: str, data: dict[str, Any], modified_by: int) -> None:
         """Update selected asset fields without changing unspecified columns."""
 
         allowed_fields = {
@@ -282,7 +282,7 @@ class AssetRepository:
                 setattr(asset, key, value)
             asset.modified_by = modified_by
 
-    def retire_asset(self, asset_id: int, modified_by: int) -> None:
+    def retire_asset(self, asset_id: str, modified_by: int) -> None:
         """Soft-retire an asset and move it to the Retired status."""
 
         with session_scope() as session:
@@ -292,7 +292,7 @@ class AssetRepository:
                 asset.asset_status = STATUS_RETIRED
                 asset.modified_by = modified_by
 
-    def update_qr(self, asset_id: int, qr_value: int, image_url: str) -> None:
+    def update_qr(self, asset_id: str, qr_value: int, image_url: str) -> None:
         """Store QR metadata after a QR image has been generated."""
 
         with session_scope() as session:
@@ -301,7 +301,7 @@ class AssetRepository:
                 asset.qr_code_value = qr_value
                 asset.qr_code_image_url = image_url
 
-    def mark_available(self, asset_id: int, modified_by: int) -> dict[str, Any] | None:
+    def mark_available(self, asset_id: str, modified_by: int) -> dict[str, Any] | None:
         """Set an asset status to Available and return the updated asset row."""
 
         with session_scope() as session:
@@ -313,7 +313,7 @@ class AssetRepository:
             session.flush()
             return model_to_dict(asset)
 
-    def list_transactions_for_asset(self, asset_id: int) -> list[dict[str, Any]]:
+    def list_transactions_for_asset(self, asset_id: str) -> list[dict[str, Any]]:
         """Return the movement history for one asset."""
 
         with session_scope() as session:
@@ -357,7 +357,7 @@ class AssetRepository:
                 payload.append(item)
             return payload
 
-    def list_maintenance_for_asset(self, asset_id: int) -> list[dict[str, Any]]:
+    def list_maintenance_for_asset(self, asset_id: str) -> list[dict[str, Any]]:
         """Return maintenance records linked to one asset."""
 
         with session_scope() as session:
@@ -431,7 +431,7 @@ class AssetRepository:
                 payload.append(item)
             return payload
 
-    def return_assets_from_user(self, user_id: int, modified_by: int) -> list[int]:
+    def return_assets_from_user(self, user_id: int, modified_by: int) -> list[str]:
         """Mark assets as Available when they are currently assigned to the given user.
 
         This updates asset_master.asset_status; it does not create a new transaction row
@@ -467,13 +467,13 @@ class AssetRepository:
                 ).all()
             ]
 
-            updated_ids: list[int] = []
+            updated_ids: list[str] = []
             for asset_id in asset_ids:
                 asset = session.get(AssetMaster, asset_id)
                 if not asset:
                     continue
                 asset.asset_status = STATUS_AVAILABLE
                 asset.modified_by = modified_by
-                updated_ids.append(int(asset_id))
+                updated_ids.append(str(asset_id))
 
             return updated_ids

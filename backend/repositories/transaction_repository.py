@@ -60,7 +60,8 @@ class TransactionRepository:
                         AssetMaster.asset_name.ilike(search_value),
                         AssetMaster.asset_code.ilike(search_value),
                         AssetMaster.serial_number.ilike(search_value),
-                        cast(AssetMaster.asset_id, String).ilike(search_value),
+                        AssetMaster.asset_id.ilike(search_value),
+                        cast(AssetMaster.asset_code, String).ilike(search_value),
                         from_name.ilike(search_value),
                         to_name.ilike(search_value),
                         performed_name.ilike(search_value),
@@ -134,7 +135,7 @@ class TransactionRepository:
                 payload.append(item)
             return payload
 
-    def latest_assignee(self, asset_id: int) -> dict[str, Any] | None:
+    def latest_assignee(self, asset_id: str) -> dict[str, Any] | None:
         """Return the last assignee recorded for an asset."""
 
         with session_scope() as session:

@@ -168,7 +168,7 @@ export function AssetsPage() {
   };
 
   return (
-    <Layout title="Manage Asset" subtitle="Browse, filter, and register assets from one responsive screen.">
+    <Layout title="Manage Asset">
       <div className="space-y-6">
         <Card
           title="Manage asset inventory"

@@ -43,7 +43,7 @@ export function TransactionsPage() {
   }, [query]);
 
   return (
-    <Layout title="Asset Transaction" subtitle="Asset movement history across the organization.">
+    <Layout title="Asset Transaction">
       <Card>
         <div className="mb-4">
           <InputField
@@ -51,7 +51,7 @@ export function TransactionsPage() {
             labelClassName="block text-center"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Asset name, asset ID, or username"
+            placeholder="Search by Asset ID"
           />
         </div>
         {error ? (

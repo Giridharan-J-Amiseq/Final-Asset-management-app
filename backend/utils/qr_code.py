@@ -19,7 +19,7 @@ class QRCodeGenerator:
         self.output_dir = output_dir
         self.public_prefix = public_prefix
 
-    def generate_for_asset(self, asset_id: int, qr_value: int | str) -> str:
+    def generate_for_asset(self, asset_id: str, qr_value: int | str) -> str:
         """Generate a PNG QR code for an asset and return its API-visible URL."""
 
         self.output_dir.mkdir(parents=True, exist_ok=True)

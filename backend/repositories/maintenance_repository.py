@@ -88,7 +88,7 @@ class MaintenanceRepository:
             for key, value in filtered.items():
                 setattr(row, key, value)
 
-    def close_maintenance(self, maintenance_id: int, asset_id: int, current_user_id: int) -> None:
+    def close_maintenance(self, maintenance_id: int, asset_id: str, current_user_id: int) -> None:
         """Close a maintenance record and return the asset to available status."""
 
         with session_scope() as session:

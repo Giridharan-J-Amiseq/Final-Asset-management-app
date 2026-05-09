@@ -60,7 +60,7 @@ export function UsersPage() {
   };
 
   return (
-    <Layout title="Users" subtitle="Create and manage application access for your team.">
+    <Layout title="Users" >
       <Card title="User directory" subtitle="Active and inactive accounts.">
         <div className="mb-4 flex justify-end">
           <Button type="button" onClick={syncMicrosoftUsers} disabled={isSyncing}>

@@ -74,7 +74,7 @@ export function MaintenancePage() {
 
     try {
       await api.post("/maintenance", {
-        asset_id: Number(form.asset_id),
+        asset_id: form.asset_id,
         issue_type: form.issue_type,
         issue_description: form.issue_description,
         vendor: form.vendor || null,
@@ -104,7 +104,7 @@ export function MaintenancePage() {
   };
 
   return (
-    <Layout title="Maintenance" subtitle="Log and close repair records with an auditable workflow.">
+    <Layout title="Maintenance">
       <div className="grid gap-6 2xl:grid-cols-[0.9fr_1.1fr]">
         <Card title="Log maintenance issue" subtitle="Use this form when an asset needs attention.">
           <form className="space-y-4" onSubmit={handleSubmit}>

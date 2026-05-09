@@ -35,13 +35,13 @@ class User(Base):
 class AssetMaster(Base):
     __tablename__ = "asset_master"
 
-    asset_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     asset_name: Mapped[str] = mapped_column(String(150), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(50), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     serial_number: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    asset_code: Mapped[str | None] = mapped_column(String(255))
+    asset_code: Mapped[int | None] = mapped_column(Integer)
     qr_code_value: Mapped[int | None] = mapped_column(Integer)
     qr_code_image_url: Mapped[str | None] = mapped_column(Text)
 
@@ -74,7 +74,7 @@ class AssetTransaction(Base):
     __tablename__ = "asset_transaction"
 
     transaction_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    asset_id: Mapped[int] = mapped_column(ForeignKey("asset_master.asset_id"), nullable=False)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset_master.asset_id"), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(50), nullable=False)
     from_employee: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))
     to_assignee: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
@@ -90,7 +90,7 @@ class Maintenance(Base):
     __tablename__ = "maintenance"
 
     maintenance_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    asset_id: Mapped[int] = mapped_column(ForeignKey("asset_master.asset_id"), nullable=False)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("asset_master.asset_id"), nullable=False)
     issue_description: Mapped[str] = mapped_column(Text, nullable=False)
     issue_type: Mapped[str] = mapped_column(String(50), nullable=False)
     warranty_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -106,7 +106,7 @@ class ActivityLog(Base):
 
     log_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(80), nullable=False)
     action: Mapped[str] = mapped_column(String(80), nullable=False)
     details: Mapped[str | None] = mapped_column(Text)
     performed_by: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))

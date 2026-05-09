@@ -37,7 +37,7 @@ class TransactionService:
 
         return self.transaction_repository.list_transactions(search)
 
-    def find_asset_or_404(self, asset_id: int) -> dict[str, Any]:
+    def find_asset_or_404(self, asset_id: str) -> dict[str, Any]:
         """Return an asset or raise a 404 response."""
 
         asset = self.asset_repository.find_by_id(asset_id)

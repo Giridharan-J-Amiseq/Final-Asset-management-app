@@ -137,7 +137,7 @@ class AssetUpdate(BaseModel):
 class AssignmentRequest(BaseModel):
     """Request body for assigning an available asset to a user."""
 
-    asset_id: int
+    asset_id: str
     to_assignee: int
     remarks: str | None = None
 
@@ -145,7 +145,7 @@ class AssignmentRequest(BaseModel):
 class TransferRequest(BaseModel):
     """Request body for transferring an assigned asset to another user."""
 
-    asset_id: int
+    asset_id: str
     to_assignee: int
     remarks: str | None = None
 
@@ -153,7 +153,7 @@ class TransferRequest(BaseModel):
 class MaintenanceCreate(BaseModel):
     """Request body for logging a new maintenance issue."""
 
-    asset_id: int
+    asset_id: str
     issue_description: str
     issue_type: IssueType
     warranty_applicable: bool = False
