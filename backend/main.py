@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from auth import CurrentUser, authenticate_user, create_access_token, require_roles
 from config import settings
 from constants import FRONTEND_APP_PATH, LOGIN_PATH, ROOT_PATH, STATIC_PATH
+from db.session import verify_database_connection
 from routes.router_manager import RouterManager
 from schemas import LoginRequest, TokenResponse
 from services.user_service import UserService
@@ -69,6 +70,17 @@ class WorkSphereApplication:
         self.configure_oauth()
         self.configure_static_files()
         self.configure_routes()
+        self.configure_startup()
+
+    def configure_startup(self) -> None:
+        """Register startup checks for required dependencies."""
+
+        self.app.add_event_handler("startup", self.on_startup)
+
+    def on_startup(self) -> None:
+        """Validate external dependencies on startup."""
+
+        verify_database_connection()
 
     def configure_middleware(self) -> None:
         """Configure cross-origin access for the React frontend and API clients."""
