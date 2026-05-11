@@ -80,8 +80,6 @@ class AssetService:
 
     def build_qr_payload(self, asset: dict[str, Any], transactions: list[dict[str, Any]] | None = None) -> str:
         """Build the readable text that a scanner displays after reading the QR code."""
-        generated_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         def safe(value: Any) -> str:
             if value is None:
                 return "-"
@@ -90,11 +88,10 @@ class AssetService:
 
         return "\n".join(
             [
-                "WorkSphere Asset",
                 f"Asset ID: {safe(asset.get('formatted_asset_id') or asset.get('asset_code'))}",
-                f"Asset Name: {safe(asset.get('asset_name'))}",
+                f"Serial Number: {safe(asset.get('serial_number'))}",
                 f"Location: {safe(asset.get('location'))}",
-                f"Generated On: {generated_on}",
+                f"Asset Type: {safe(asset.get('asset_type'))}",
             ]
         )
 
@@ -324,3 +321,37 @@ class AssetService:
             "qr_code_image_url": image_url,
             "qr_payload": qr_payload,
         }
+
+    def delete_asset(self, asset_id: str, current_user: dict[str, Any]) -> dict[str, str]:
+        """Permanently delete an asset and related records."""
+
+        asset = self.get_asset_or_404(asset_id)
+        self._remove_qr_image(asset.get("qr_code_image_url"))
+        deleted = self.repository.delete_asset_hard(asset["asset_id"])
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Asset not found")
+
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=asset["asset_id"],
+            action="asset_deleted",
+            performed_by=current_user.get("user_id"),
+            details={"asset_name": asset.get("asset_name")},
+        )
+
+        return {"message": "Asset deleted successfully"}
+
+    def _remove_qr_image(self, qr_url: str | None) -> None:
+        """Remove a local QR image file when deleting an asset."""
+
+        if not qr_url:
+            return
+
+        static_root = Path(__file__).resolve().parent.parent / "static"
+        if not qr_url.startswith("/static/"):
+            return
+
+        relative_path = qr_url.replace("/static/", "", 1)
+        file_path = static_root / relative_path
+        if file_path.exists():
+            file_path.unlink()

@@ -5,11 +5,12 @@
  * - Close issue: `PATCH /maintenance/{id}/close` (moves asset back to "Available")
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { maintenanceIssueTypes } from "../app/routeConfig";
 import { api } from "../services/api";
-import { formatDate, formatDateTime, formatIssueType } from "../services/formatters";
+import { formatDateTime, formatIssueType } from "../services/formatters";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -33,13 +34,143 @@ function computeWarrantyApplicable(asset) {
   return new Date() <= end;
 }
 
+function GroupedSearchSelect({
+  label,
+  query,
+  onQueryChange,
+  queryPlaceholder,
+  value,
+  onValueChange,
+  options,
+  allOptions,
+  getOptionValue,
+  getOptionLabel,
+  emptyLabel = "No matching results",
+  maxItems = 50,
+}) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef(null);
+  const pointerSelected = useRef(false);
+
+  const selectedOption = useMemo(() => {
+    if (!value) return null;
+    const selectedValue = String(value);
+    return (allOptions || []).find((option) => String(getOptionValue(option)) === selectedValue) || null;
+  }, [allOptions, getOptionValue, value]);
+
+  const visibleOptions = useMemo(() => {
+    const trimmed = query.trim();
+    const source = trimmed ? options : allOptions;
+    return (source || []).slice(0, maxItems);
+  }, [allOptions, maxItems, options, query]);
+
+  useEffect(() => {
+    if (query.trim()) setOpen(true);
+  }, [query]);
+
+  const scheduleClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  const cancelClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  };
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <div className="text-sm font-medium text-slate-700">{label}</div>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-ink-200 focus-within:border-brand-teal focus-within:ring-4 focus-within:ring-ink-100">
+        <input
+          className="min-h-12 w-full min-w-0 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-slate-400"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder={queryPlaceholder}
+          onFocus={() => {
+            cancelClose();
+            if (query.trim()) setOpen(true);
+          }}
+          onBlur={scheduleClose}
+        />
+        <div className="h-px w-full bg-slate-200" />
+        <button
+          type="button"
+          className="flex min-h-12 w-full min-w-0 items-center justify-between gap-3 bg-transparent px-4 py-3 text-left text-sm outline-none"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            cancelClose();
+          }}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span className={selectedOption ? "text-slate-900" : "text-slate-500"}>
+            {selectedOption ? getOptionLabel(selectedOption) : "Select"}
+          </span>
+          <ChevronDown size={18} className={`shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} />
+        </button>
+
+        {open && (
+          <div className="border-t border-slate-200 bg-white/95">
+            <div className="max-h-64 overflow-auto py-1">
+              {visibleOptions.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-slate-500">{emptyLabel}</div>
+              ) : (
+                visibleOptions.map((option) => {
+                  const optionValue = String(getOptionValue(option));
+                  const active = value && String(value) === optionValue;
+                  return (
+                    <button
+                      key={optionValue}
+                      type="button"
+                      className={`flex w-full items-start px-4 py-2 text-left text-sm transition ${
+                        active ? "bg-brand-teal/10 text-slate-900" : "text-slate-700 hover:bg-ink-50/60"
+                      }`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        cancelClose();
+                        pointerSelected.current = true;
+                        onValueChange(optionValue);
+                        setOpen(false);
+                      }}
+                      onClick={() => {
+                        if (pointerSelected.current) {
+                          pointerSelected.current = false;
+                          return;
+                        }
+
+                        onValueChange(optionValue);
+                        setOpen(false);
+                      }}
+                    >
+                      {getOptionLabel(option)}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Logs and closes maintenance records.
  */
 export function MaintenancePage() {
   const [assets, setAssets] = useState([]);
   const [records, setRecords] = useState([]);
-  const [form, setForm] = useState({ asset_id: "", issue_type: "", issue_description: "", vendor: "", resolution_notes: "", warranty_applicable: false });
+  const [assetQuery, setAssetQuery] = useState("");
+  const [form, setForm] = useState({
+    asset_id: "",
+    issue_type: "",
+    issue_description: "",
+    vendor: "",
+    resolution_notes: "",
+    warranty_applicable: false,
+    warranty_extension_start_date: "",
+    warranty_extension_end_date: "",
+  });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -48,6 +179,17 @@ export function MaintenancePage() {
     const selectedValue = String(form.asset_id);
     return assets.find((asset) => String(asset.asset_id) === selectedValue) || null;
   }, [assets, form.asset_id]);
+
+  const filteredAssets = useMemo(() => {
+    const trimmed = assetQuery.trim().toLowerCase();
+    if (!trimmed) return assets;
+    return assets.filter((asset) => {
+      const name = String(asset.asset_name || "").toLowerCase();
+      const serial = String(asset.serial_number || "").toLowerCase();
+      const assetId = String(asset.asset_id || "").toLowerCase();
+      return name.includes(trimmed) || serial.includes(trimmed) || assetId.includes(trimmed);
+    });
+  }, [assetQuery, assets]);
 
   useEffect(() => {
     const nextApplicable = form.asset_id ? computeWarrantyApplicable(selectedAsset) : false;
@@ -71,6 +213,18 @@ export function MaintenancePage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setMessage("");
+    setError("");
+
+    if (form.issue_type === "Extend Warranty") {
+      if (!form.warranty_extension_start_date || !form.warranty_extension_end_date) {
+        setError("Warranty extension start and end dates are required.");
+        return;
+      }
+      if (form.warranty_extension_end_date < form.warranty_extension_start_date) {
+        setError("Warranty extension end date cannot be before the start date.");
+        return;
+      }
+    }
 
     try {
       await api.post("/maintenance", {
@@ -80,9 +234,20 @@ export function MaintenancePage() {
         vendor: form.vendor || null,
         resolution_notes: form.resolution_notes || null,
         warranty_applicable: Boolean(form.warranty_applicable),
+        warranty_extension_start_date: form.issue_type === "Extend Warranty" ? form.warranty_extension_start_date : null,
+        warranty_extension_end_date: form.issue_type === "Extend Warranty" ? form.warranty_extension_end_date : null,
       });
       setMessage("Maintenance issue logged successfully.");
-      setForm({ asset_id: "", issue_type: "", issue_description: "", vendor: "", resolution_notes: "", warranty_applicable: false });
+      setForm({
+        asset_id: "",
+        issue_type: "",
+        issue_description: "",
+        vendor: "",
+        resolution_notes: "",
+        warranty_applicable: false,
+        warranty_extension_start_date: "",
+        warranty_extension_end_date: "",
+      });
       await loadMaintenanceData();
     } catch (requestError) {
       setError(requestError.message);
@@ -108,11 +273,13 @@ export function MaintenancePage() {
       <div className="grid gap-6 2xl:grid-cols-[0.9fr_1.1fr]">
         <Card title="Log maintenance issue" subtitle="Use this form when an asset needs attention.">
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <SelectField
+            <GroupedSearchSelect
               label="Asset"
+              query={assetQuery}
+              onQueryChange={setAssetQuery}
+              queryPlaceholder="Search by asset name, ID, or serial"
               value={form.asset_id}
-              onChange={(event) => {
-                const nextAssetId = event.target.value;
+              onValueChange={(nextAssetId) => {
                 const nextAsset = assets.find((asset) => String(asset.asset_id) === String(nextAssetId)) || null;
                 setForm((current) => ({
                   ...current,
@@ -120,28 +287,47 @@ export function MaintenancePage() {
                   warranty_applicable: nextAssetId ? computeWarrantyApplicable(nextAsset) : false,
                 }));
               }}
+              options={filteredAssets}
+              allOptions={assets}
+              getOptionValue={(asset) => asset.asset_id}
+              getOptionLabel={(asset) => `${asset.asset_name} - ${asset.serial_number}`}
+            />
+
+            <SelectField
+              label="Issue type"
+              value={form.issue_type}
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setForm((current) => ({
+                  ...current,
+                  issue_type: nextType,
+                  warranty_extension_start_date: nextType === "Extend Warranty" ? current.warranty_extension_start_date : "",
+                  warranty_extension_end_date: nextType === "Extend Warranty" ? current.warranty_extension_end_date : "",
+                }));
+              }}
               required
             >
-              <option value="">Select asset</option>
-              {assets.map((asset) => <option key={asset.asset_id} value={asset.asset_id}>{asset.asset_name} - {asset.serial_number}</option>)}
-            </SelectField>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <InputField
-                label="Warranty start"
-                value={selectedAsset?.warranty_start_date ? formatDate(selectedAsset.warranty_start_date) : "-"}
-                disabled
-              />
-              <InputField
-                label="Warranty expiry (years)"
-                value={selectedAsset?.warranty_expiry !== null && selectedAsset?.warranty_expiry !== undefined && selectedAsset?.warranty_expiry !== "" ? String(selectedAsset.warranty_expiry) : "-"}
-                disabled
-              />
-            </div>
-            <SelectField label="Issue type" value={form.issue_type} onChange={(event) => setForm({ ...form, issue_type: event.target.value })} required>
               <option value="">Select issue type</option>
               {maintenanceIssueTypes.map((item) => <option key={item} value={item}>{item}</option>)}
             </SelectField>
+            {form.issue_type === "Extend Warranty" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <InputField
+                  label="Warranty extension start"
+                  type="date"
+                  value={form.warranty_extension_start_date}
+                  onChange={(event) => setForm({ ...form, warranty_extension_start_date: event.target.value })}
+                  required
+                />
+                <InputField
+                  label="Warranty extension end"
+                  type="date"
+                  value={form.warranty_extension_end_date}
+                  onChange={(event) => setForm({ ...form, warranty_extension_end_date: event.target.value })}
+                  required
+                />
+              </div>
+            )}
             <TextareaField label="Issue description" value={form.issue_description} onChange={(event) => setForm({ ...form, issue_description: event.target.value })} />
             <InputField label="Vendor" value={form.vendor} onChange={(event) => setForm({ ...form, vendor: event.target.value })} />
             <TextareaField label="Resolution notes" value={form.resolution_notes} onChange={(event) => setForm({ ...form, resolution_notes: event.target.value })} />

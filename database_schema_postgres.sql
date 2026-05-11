@@ -57,6 +57,18 @@ BEGIN
     END IF;
 END$$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'issue_type_enum' AND e.enumlabel = 'Extend Warranty'
+    ) THEN
+        ALTER TYPE issue_type_enum ADD VALUE 'Extend Warranty';
+    END IF;
+END$$;
+
 CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
     user_name VARCHAR(100) NOT NULL,
@@ -118,6 +130,8 @@ CREATE TABLE IF NOT EXISTS maintenance (
     issue_description TEXT NOT NULL,
     issue_type issue_type_enum NOT NULL,
     warranty_applicable BOOLEAN NOT NULL DEFAULT FALSE,
+    warranty_extension_start_date DATE,
+    warranty_extension_end_date DATE,
     maintenance_status maintenance_status_enum NOT NULL DEFAULT 'Open',
     vendor VARCHAR(150),
     resolution_notes TEXT,
@@ -175,6 +189,10 @@ CREATE TRIGGER trg_maintenance_modified_on
 BEFORE UPDATE ON maintenance
 FOR EACH ROW
 EXECUTE FUNCTION set_modified_on();
+
+ALTER TABLE maintenance
+    ADD COLUMN IF NOT EXISTS warranty_extension_start_date DATE,
+    ADD COLUMN IF NOT EXISTS warranty_extension_end_date DATE;
 
 INSERT INTO asset_category (category_name, description)
 VALUES

@@ -19,5 +19,5 @@ export const navigationItems = [
 export const assetTypes = ["Laptop", "Desktop", "Server", "Furniture", "Printer", "Phone", "Monitor", "UPS", "Other"];
 export const assetStatuses = ["Available", "Assigned", "In Repair", "Retired", "Lost"];
 export const assetConditions = ["New", "Good", "Damaged"];
-export const maintenanceIssueTypes = ["Repair", "Physical Damage", "Theft", "Software Issue"];
+export const maintenanceIssueTypes = ["Repair", "Physical Damage", "Theft", "Software Issue", "Extend Warranty"];
 export const userRoles = ["Admin", "Viewer"];

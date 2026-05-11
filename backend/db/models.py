@@ -94,6 +94,8 @@ class Maintenance(Base):
     issue_description: Mapped[str] = mapped_column(Text, nullable=False)
     issue_type: Mapped[str] = mapped_column(String(50), nullable=False)
     warranty_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    warranty_extension_start_date: Mapped[date | None] = mapped_column(Date)
+    warranty_extension_end_date: Mapped[date | None] = mapped_column(Date)
     maintenance_status: Mapped[str] = mapped_column(String(50), nullable=False, default=MAINTENANCE_OPEN)
     vendor: Mapped[str | None] = mapped_column(String(150))
     resolution_notes: Mapped[str | None] = mapped_column(Text)

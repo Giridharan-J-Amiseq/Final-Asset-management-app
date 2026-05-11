@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, func, or_, select, text
+from sqlalchemy import String, and_, case, cast, delete, func, or_, select, text
 from sqlalchemy.orm import aliased
 
 from constants import STATUS_ASSIGNED, STATUS_AVAILABLE, STATUS_RETIRED
-from db.models import AssetMaster, AssetTransaction, Maintenance, User
+from db.models import ActivityLog, AssetMaster, AssetTransaction, Maintenance, User
 from db.serialization import model_to_dict
 from db.session import session_scope
 
@@ -291,6 +291,30 @@ class AssetRepository:
                 asset.is_retired = True
                 asset.asset_status = STATUS_RETIRED
                 asset.modified_by = modified_by
+
+    def delete_asset_hard(self, asset_id: str) -> bool:
+        """Delete an asset and all related records."""
+
+        asset_id_value = str(asset_id).strip() if asset_id is not None else ""
+        if not asset_id_value:
+            return False
+
+        with session_scope() as session:
+            asset = session.get(AssetMaster, asset_id_value)
+            if not asset:
+                return False
+
+            session.execute(delete(AssetTransaction).where(AssetTransaction.asset_id == asset_id_value))
+            session.execute(delete(Maintenance).where(Maintenance.asset_id == asset_id_value))
+            session.execute(text("DELETE FROM alerts WHERE asset_id = :asset_id"), {"asset_id": asset_id_value})
+            session.execute(
+                delete(ActivityLog).where(
+                    ActivityLog.entity_type == "asset",
+                    ActivityLog.entity_id == asset_id_value,
+                )
+            )
+            session.delete(asset)
+            return True
 
     def update_qr(self, asset_id: str, qr_value: int, image_url: str) -> None:
         """Store QR metadata after a QR image has been generated."""

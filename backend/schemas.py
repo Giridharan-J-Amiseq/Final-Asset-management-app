@@ -20,7 +20,7 @@ CategoryType = Literal["IT", "Non-IT"]
 AssetStatus = Literal["Available", "Assigned", "In Repair", "Retired", "Lost"]
 ConditionStatus = Literal["New", "Good", "Damaged"]
 TransactionType = Literal["New Asset", "Asset Transfer"]
-IssueType = Literal["Repair", "Physical Damage", "Theft", "Software Issue"]
+IssueType = Literal["Repair", "Physical Damage", "Theft", "Software Issue", "Extend Warranty"]
 MaintenanceStatus = Literal["Open", "In Progress", "Closed"]
 
 
@@ -157,8 +157,18 @@ class MaintenanceCreate(BaseModel):
     issue_description: str
     issue_type: IssueType
     warranty_applicable: bool = False
+    warranty_extension_start_date: date | None = None
+    warranty_extension_end_date: date | None = None
     vendor: str | None = None
     resolution_notes: str | None = None
+
+    @field_validator("warranty_extension_end_date")
+    @classmethod
+    def validate_warranty_extension_dates(cls, value: date | None, info):
+        start_date = info.data.get("warranty_extension_start_date")
+        if value and start_date and value < start_date:
+            raise ValueError("Warranty extension end date cannot be before start date")
+        return value
 
 
 class MaintenanceUpdate(BaseModel):
@@ -167,9 +177,19 @@ class MaintenanceUpdate(BaseModel):
     issue_description: str | None = None
     issue_type: IssueType | None = None
     warranty_applicable: bool | None = None
+    warranty_extension_start_date: date | None = None
+    warranty_extension_end_date: date | None = None
     maintenance_status: MaintenanceStatus | None = None
     vendor: str | None = None
     resolution_notes: str | None = None
+
+    @field_validator("warranty_extension_end_date")
+    @classmethod
+    def validate_warranty_extension_dates(cls, value: date | None, info):
+        start_date = info.data.get("warranty_extension_start_date")
+        if value and start_date and value < start_date:
+            raise ValueError("Warranty extension end date cannot be before start date")
+        return value
 
 
 class ApiMessage(BaseModel):

@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from constants import MAINTENANCE_CLOSED, MAINTENANCE_OPEN, STATUS_AVAILABLE, STATUS_IN_REPAIR
+from constants import ISSUE_WARRANTY_EXTENSION, MAINTENANCE_CLOSED, MAINTENANCE_OPEN, STATUS_AVAILABLE, STATUS_IN_REPAIR
 from db.models import AssetMaster, Maintenance
 from db.serialization import model_to_dict
 from db.session import session_scope
@@ -55,6 +55,8 @@ class MaintenanceRepository:
                 issue_description=payload.issue_description,
                 issue_type=payload.issue_type,
                 warranty_applicable=payload.warranty_applicable,
+                warranty_extension_start_date=payload.warranty_extension_start_date,
+                warranty_extension_end_date=payload.warranty_extension_end_date,
                 maintenance_status=MAINTENANCE_OPEN,
                 vendor=payload.vendor,
                 resolution_notes=payload.resolution_notes,
@@ -62,7 +64,7 @@ class MaintenanceRepository:
             session.add(m)
 
             asset = session.get(AssetMaster, payload.asset_id)
-            if asset:
+            if asset and payload.issue_type != ISSUE_WARRANTY_EXTENSION:
                 asset.asset_status = STATUS_IN_REPAIR
                 asset.modified_by = current_user_id
 
@@ -73,6 +75,8 @@ class MaintenanceRepository:
             "issue_description",
             "issue_type",
             "warranty_applicable",
+            "warranty_extension_start_date",
+            "warranty_extension_end_date",
             "maintenance_status",
             "vendor",
             "resolution_notes",

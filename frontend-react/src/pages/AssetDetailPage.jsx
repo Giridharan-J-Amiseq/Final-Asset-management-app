@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { API_BASE_URL, api } from "../services/api";
+import { hasRole } from "../services/auth";
 import { formatCurrency, formatDate, formatDateTime, formatIssueType } from "../services/formatters";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
@@ -41,6 +42,10 @@ export function AssetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
   const [retireLoading, setRetireLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrCacheKey, setQrCacheKey] = useState(() => Date.now());
   const [showEditModal, setShowEditModal] = useState(false);
   const navigate = useNavigate();
 
@@ -91,6 +96,7 @@ export function AssetDetailPage() {
   const canAssign = asset?.asset_status === "Available";
   const canTransfer = asset?.asset_status === "Assigned";
   const canMaintain = true;
+  const canDelete = hasRole(["Admin"]);
   const currentHolder =
     asset?.asset_status === "Assigned"
       ? {
@@ -130,6 +136,24 @@ export function AssetDetailPage() {
     window.print();
   };
 
+  const handleGenerateQr = async () => {
+    if (qrLoading) return;
+    setQrLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      await api.post(`/assets/${assetId}/qr`);
+      const refreshed = await api.get(`/assets/${assetId}`);
+      setData(refreshed);
+      setQrCacheKey(Date.now());
+      setMessage("QR code generated.");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
   const retireAsset = async () => {
     setShowRetireConfirm(true);
   };
@@ -146,6 +170,25 @@ export function AssetDetailPage() {
     } finally {
       setRetireLoading(false);
       setShowRetireConfirm(false);
+    }
+  };
+
+  const deleteAsset = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteAsset = async () => {
+    if (deleteLoading) return;
+    setDeleteLoading(true);
+    setError("");
+    try {
+      await api.delete(`/assets/${assetId}`);
+      navigate("/assets");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setDeleteLoading(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -180,6 +223,24 @@ export function AssetDetailPage() {
               </Button>
               <Button variant="danger" onClick={confirmRetireAsset} disabled={retireLoading}>
                 {retireLoading ? "Retiring..." : "Retire asset"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="text-lg font-semibold text-slate-900">Delete asset</div>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently delete the asset, its transactions, maintenance history, and QR image.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)} disabled={deleteLoading}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={confirmDeleteAsset} disabled={deleteLoading}>
+                {deleteLoading ? "Deleting..." : "Delete asset"}
               </Button>
             </div>
           </div>
@@ -281,14 +342,17 @@ export function AssetDetailPage() {
                   <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">QR code</div>
                   <div className="mt-4 flex min-h-36 items-center justify-center rounded-2xl bg-white p-3 sm:min-h-40 sm:rounded-3xl sm:p-4">
                     {asset.qr_code_image_url ? (
-                      <img className="max-h-32 w-full max-w-32 object-contain sm:max-h-36 sm:max-w-36" src={`${API_BASE_URL}${asset.qr_code_image_url}`} alt="Asset QR code" />
+                      <img className="max-h-32 w-full max-w-32 object-contain sm:max-h-36 sm:max-w-36" src={`${API_BASE_URL}${asset.qr_code_image_url}?v=${qrCacheKey}`} alt="Asset QR code" />
                     ) : (
                       <div className="text-sm text-slate-500">No QR code generated yet.</div>
                     )}
                   </div>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    <Button variant="secondary" onClick={handleGenerateQr} className="px-3 py-2 text-sm" disabled={qrLoading}>
+                      {qrLoading ? "Generating..." : asset.qr_code_image_url ? "Regenerate QR" : "Generate QR"}
+                    </Button>
                     <Button onClick={handlePrintQr} className="px-3 py-2 text-sm">Print QR</Button>
-                    <Button as="a" href={`${asset.qr_code_image_url ? `${API_BASE_URL}${asset.qr_code_image_url}` : "#"}`} variant="secondary" className="px-3 py-2 text-sm" target="_blank" rel="noreferrer">
+                    <Button as="a" href={`${asset.qr_code_image_url ? `${API_BASE_URL}${asset.qr_code_image_url}?v=${qrCacheKey}` : "#"}`} variant="secondary" className="px-3 py-2 text-sm" target="_blank" rel="noreferrer">
                       Open image
                     </Button>
                   </div>
@@ -374,6 +438,7 @@ export function AssetDetailPage() {
                 )}
                 <Button as={Link} to="/maintenance" variant="secondary">Maintenance</Button>
                 <Button variant="danger" onClick={retireAsset}>Retire</Button>
+                {canDelete && <Button variant="danger" onClick={deleteAsset}>Delete</Button>}
               </div>
           </Card>
 
