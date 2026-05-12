@@ -80,6 +80,9 @@ class WorkSphereApplication:
     def on_startup(self) -> None:
         """Validate external dependencies on startup."""
 
+        missing_security = settings.security.missing_fields()
+        if missing_security:
+            raise RuntimeError(f"JWT configuration missing: {', '.join(missing_security)}")
         verify_database_connection()
 
     def configure_middleware(self) -> None:
@@ -119,6 +122,16 @@ class WorkSphereApplication:
             client_kwargs={"scope": "openid profile email User.Read"},
         )
         self.oauth = oauth
+
+    def _ensure_azure_configured(self) -> None:
+        """Ensure Azure OAuth settings exist before calling Microsoft endpoints."""
+
+        missing = settings.azure.missing_fields()
+        if missing:
+            raise HTTPException(
+                status_code=501,
+                detail=f"Microsoft login is not configured. Missing: {', '.join(missing)}",
+            )
 
     def configure_static_files(self) -> None:
         """Mount generated QR files and the React production build when it exists."""
@@ -169,10 +182,16 @@ class WorkSphereApplication:
     async def microsoft_login(self, request: Request):
         """Begin the Microsoft OAuth flow by redirecting to the authorization URL."""
 
+        self._ensure_azure_configured()
         if not self.oauth:
             raise HTTPException(status_code=501, detail="Microsoft login is not configured")
         redirect_uri = self._resolve_microsoft_redirect_uri(request)
-        return await self.oauth.microsoft.authorize_redirect(request, redirect_uri)
+        try:
+            return await self.oauth.microsoft.authorize_redirect(request, redirect_uri)
+        except OAuthError as exc:
+            raise HTTPException(status_code=400, detail=f"Microsoft login failed: {exc.error}") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Microsoft login initialization failed.") from exc
 
     def _resolve_microsoft_redirect_uri(self, request: Request) -> str:
         """Return the redirect URI used for Microsoft OAuth.
@@ -205,6 +224,7 @@ class WorkSphereApplication:
     async def microsoft_callback(self, request: Request):
         """Handle the Microsoft OAuth callback, create/login a local user, and redirect to the frontend."""
 
+        self._ensure_azure_configured()
         if not self.oauth:
             raise HTTPException(status_code=501, detail="Microsoft login is not configured")
 
@@ -217,11 +237,16 @@ class WorkSphereApplication:
         if not access_token:
             raise HTTPException(status_code=400, detail="Microsoft login did not return an access token")
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
-                "https://graph.microsoft.com/v1.0/me",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    "https://graph.microsoft.com/v1.0/me",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail="Unable to reach Microsoft Graph.") from exc
+        if response.status_code in {401, 403}:
+            raise HTTPException(status_code=401, detail="Microsoft access token was rejected. Check Azure app settings.")
         if response.status_code >= 400:
             raise HTTPException(status_code=400, detail="Failed to fetch Microsoft profile")
 
@@ -239,8 +264,7 @@ class WorkSphereApplication:
     async def _graph_app_token(self) -> str:
         """Fetch an application (client credentials) token for Microsoft Graph."""
 
-        if not settings.azure.is_configured:
-            raise HTTPException(status_code=501, detail="Microsoft login is not configured")
+        self._ensure_azure_configured()
 
         token_url = f"https://login.microsoftonline.com/{settings.azure.tenant_id}/oauth2/v2.0/token"
         data = {
@@ -250,13 +274,23 @@ class WorkSphereApplication:
             "scope": "https://graph.microsoft.com/.default",
         }
 
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.post(token_url, data=data)
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.post(token_url, data=data)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail="Unable to reach Microsoft login endpoint.") from exc
 
+        if response.status_code in {401, 403}:
+            raise HTTPException(status_code=401, detail="Azure client credentials were rejected. Check AZURE_* values.")
         if response.status_code >= 400:
             raise HTTPException(status_code=400, detail="Failed to obtain Microsoft Graph token")
 
-        access_token = response.json().get("access_token")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="Microsoft token response was not valid JSON.") from exc
+
+        access_token = payload.get("access_token")
         if not access_token:
             raise HTTPException(status_code=400, detail="Microsoft Graph token response was missing access_token")
 
@@ -276,14 +310,19 @@ class WorkSphereApplication:
             "$top": str(top),
         }
 
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail="Unable to reach Microsoft Graph.") from exc
 
         if response.status_code == 403:
             raise HTTPException(
                 status_code=403,
                 detail="Microsoft Graph denied access. Ensure your Azure app has User.Read.All (Application) and admin consent.",
             )
+        if response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Microsoft Graph rejected the token. Check Azure credentials.")
         if response.status_code >= 400:
             raise HTTPException(status_code=400, detail="Failed to fetch employees from Microsoft Graph")
 
@@ -326,44 +365,49 @@ class WorkSphereApplication:
         fetched = 0
         pages = 0
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            while next_url:
-                response = await client.get(next_url, headers=headers, params=next_params)
-                pages += 1
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                while next_url:
+                    response = await client.get(next_url, headers=headers, params=next_params)
+                    pages += 1
 
-                if response.status_code == 403:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Microsoft Graph denied access. Ensure your Azure app has User.Read.All (Application) and admin consent.",
-                    )
-                if response.status_code >= 400:
-                    raise HTTPException(status_code=400, detail="Failed to fetch employees from Microsoft Graph")
+                    if response.status_code == 403:
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Microsoft Graph denied access. Ensure your Azure app has User.Read.All (Application) and admin consent.",
+                        )
+                    if response.status_code == 401:
+                        raise HTTPException(status_code=401, detail="Microsoft Graph rejected the token. Check Azure credentials.")
+                    if response.status_code >= 400:
+                        raise HTTPException(status_code=400, detail="Failed to fetch employees from Microsoft Graph")
 
-                payload = response.json() or {}
-                items = payload.get("value", []) or []
-                fetched += len(items)
+                    payload = response.json() or {}
+                    items = payload.get("value", []) or []
+                    fetched += len(items)
 
-                for item in items:
-                    email = item.get("mail") or item.get("userPrincipalName")
-                    if not email:
-                        skipped += 1
-                        continue
+                    for item in items:
+                        email = item.get("mail") or item.get("userPrincipalName")
+                        if not email:
+                            skipped += 1
+                            continue
 
-                    email_value = email.strip().lower()
-                    existing = user_service.repository.find_by_email(email_value)
-                    if existing:
-                        skipped += 1
-                        continue
+                        email_value = email.strip().lower()
+                        existing = user_service.repository.find_by_email(email_value)
+                        if existing:
+                            skipped += 1
+                            continue
 
-                    try:
-                        user_service.ensure_microsoft_user(email=email_value, display_name=item.get("displayName"))
-                        created += 1
-                    except HTTPException:
-                        # Don't fail the entire import if one user record can't be created.
-                        skipped += 1
+                        try:
+                            user_service.ensure_microsoft_user(email=email_value, display_name=item.get("displayName"))
+                            created += 1
+                        except HTTPException:
+                            # Don't fail the entire import if one user record can't be created.
+                            skipped += 1
 
-                next_url = payload.get("@odata.nextLink")
-                next_params = None  # nextLink already contains query params
+                    next_url = payload.get("@odata.nextLink")
+                    next_params = None  # nextLink already contains query params
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail="Unable to reach Microsoft Graph.") from exc
 
         return {
             "imported": created,

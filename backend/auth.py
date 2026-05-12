@@ -40,10 +40,22 @@ class AuthService:
     def create_access_token(self, data: dict, expires_delta: timedelta | None = None) -> str:
         """Create a signed JWT containing identity and role claims."""
 
+        missing = self.security.missing_fields()
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"JWT configuration is missing: {', '.join(missing)}",
+            )
         to_encode = data.copy()
         expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=self.security.access_token_expire_minutes))
         to_encode.update({"exp": expire})
-        return jwt.encode(to_encode, self.security.secret_key, algorithm=self.security.algorithm)
+        try:
+            return jwt.encode(to_encode, self.security.secret_key, algorithm=self.security.algorithm)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create access token.",
+            ) from exc
 
     def authenticate_user(self, username: str, password: str) -> dict | None:
         """Validate username, active status, and password hash."""
@@ -58,9 +70,15 @@ class AuthService:
     def get_user_from_token(self, token: str) -> dict:
         """Decode a bearer token and return the active user it represents."""
 
+        missing = self.security.missing_fields()
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"JWT configuration is missing: {', '.join(missing)}",
+            )
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Token validation failed. Check the token and WS_SECRET_KEY configuration.",
             headers={"WWW-Authenticate": "Bearer"},
         )
         try:

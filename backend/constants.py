@@ -47,9 +47,11 @@ ASSET_LOCATIONS = {
 }
 ASSET_DEPARTMENTS = {
     "IA": "Intelligent Automation",
+    "BA": "Business Analyst",
     "Client": "Client",
     "Cyber Security": "Cyber Security",
     "IT Administration": "IT Administration",
+    "Python dev": "Python Developer",
 }
 
 ASSET_CODE_PREFIX = "AMQ"

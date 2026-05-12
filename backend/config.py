@@ -58,6 +58,14 @@ class SecuritySettings:
     algorithm: str = "HS256"
     access_token_expire_minutes: int = int(os.getenv("WS_TOKEN_EXPIRE_MINUTES", "480"))
 
+    def missing_fields(self) -> list[str]:
+        """Return a list of missing/empty security-related environment variables."""
+
+        missing: list[str] = []
+        if not self.secret_key or not self.secret_key.strip():
+            missing.append("WS_SECRET_KEY")
+        return missing
+
 
 @dataclass(frozen=True)
 class AzureAdSettings:
@@ -74,6 +82,22 @@ class AzureAdSettings:
         """Return True when the minimal configuration exists for OAuth."""
 
         return bool(self.tenant_id and self.client_id and self.client_secret and self.redirect_uri and self.frontend_url)
+
+    def missing_fields(self) -> list[str]:
+        """Return a list of missing Azure AD environment variables."""
+
+        missing: list[str] = []
+        if not self.tenant_id:
+            missing.append("AZURE_TENANT_ID")
+        if not self.client_id:
+            missing.append("AZURE_CLIENT_ID")
+        if not self.client_secret:
+            missing.append("AZURE_CLIENT_SECRET")
+        if not self.redirect_uri:
+            missing.append("MS_REDIRECT_URI")
+        if not self.frontend_url:
+            missing.append("FRONTEND_URL")
+        return missing
 
 
 @dataclass(frozen=True)
